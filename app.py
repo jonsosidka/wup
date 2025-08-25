@@ -165,71 +165,77 @@ def compute_lineup_total(team_players: pd.DataFrame, roster: Roster) -> float:
 
 
 def recommend(players: pd.DataFrame, my_roster_counts: Dict[str, int], roster: Roster, my_team_df: pd.DataFrame, taken_count: int, league_size: int, w_delta: float, w_vor: float, w_scarcity: float, bench_depth_boost: float) -> pd.DataFrame:
+	"""Rank players with optimizations for in-browser performance.
+
+	- Vectorize scarcity across positions.
+	- Compute delta/would_start only for a top-K candidate subset.
+	"""
 	players = players.copy()
 	baseline_total = compute_lineup_total(my_team_df, roster)
 	# Draft progress 0..1 based on approximate total picks
 	total_picks = league_size * (sum(roster.slots.values()) + roster.bench)
 	progress = min(1.0, max(0.0, taken_count / max(1, total_picks)))
-	def pos_weight(pos: str, would_start: bool) -> float:
-		# Defer QB early; DST and K until very late
-		if pos == "QB":
-			return 0.8 if progress < 0.4 else (0.9 if progress < 0.7 else 1.0)
-		if pos == "DST":
-			return 0.3 if progress < 0.75 else (0.8 if progress < 0.9 else 1.0)
-		if pos == "K":
-			return 0.2 if progress < 0.85 else (0.6 if progress < 0.95 else 1.0)
-		# RB/WR/TE normal; tiny boost if filling starters
-		return 1.05 if would_start else 1.0
-	def bench_multiplier(pos: str, would_start: bool) -> float:
-		if would_start:
-			return 1.0
-		# Skill bench retains value; non-skill bench less so
-		if pos in ("RB","WR","TE"):
-			return 1.0 + bench_depth_boost  # e.g., 0.1..0.3
-		if pos == "QB":
-			return 0.85
-		if pos == "DST":
-			return 0.7
-		if pos == "K":
-			return 0.6
-		return 0.9
-	# Precompute sorted lists per position for scarcity calc
-	pos_sorted: Dict[str, pd.DataFrame] = {}
-	for p in players["position"].unique():
-		pos_sorted[p] = players[players["position"] == p].sort_values("proj_pts", ascending=False).reset_index(drop=True)
-	def scarcity(row: pd.Series) -> float:
-		pos = row["position"]
-		df_pos = pos_sorted.get(pos)
-		if df_pos is None or df_pos.empty:
-			return 0.0
-		# find index by player name match
-		idx = df_pos.index[df_pos["player"] == row["player"]]
-		if len(idx) == 0:
-			return 0.0
-		i = int(idx[0])
-		next_pool = df_pos.iloc[i+1:i+4]
-		if next_pool.empty:
-			return 0.0
-		avg_next = float(next_pool["proj_pts"].mean())
-		drop = float(row["proj_pts"]) - avg_next
-		return max(0.0, drop)
-	def candidate_delta(row: pd.Series) -> float:
-		cand_df = pd.concat([my_team_df, row.to_frame().T], ignore_index=True)
-		new_total = compute_lineup_total(cand_df, roster)
-		return new_total - baseline_total
-	def would_start_fn(row: pd.Series) -> bool:
-		# If delta > epsilon, candidate cracked starting lineup
-		return candidate_delta(row) > 0.05
-	players["delta"] = players.apply(candidate_delta, axis=1)
-	players["would_start"] = players.apply(would_start_fn, axis=1)
-	players["scarcity"] = players.apply(scarcity, axis=1)
-	# VOR component: use FLEX VOR for flex-eligible to reflect bench utility
-	vor_component = np.where(players["position"].isin(["RB","WR","TE"]), players["VOR_FLEX"].fillna(players["VOR"]).fillna(0.0), players["VOR"].fillna(0.0))
-	players["pos_w"] = players.apply(lambda r: pos_weight(r["position"], bool(r["would_start"])), axis=1)
-	players["bench_w"] = players.apply(lambda r: bench_multiplier(r["position"], bool(r["would_start"])), axis=1)
+
+	# VOR component first (cheap)
+	vor_component = np.where(
+		players["position"].isin(["RB","WR","TE"]),
+		players["VOR_FLEX"].fillna(players["VOR"]).fillna(0.0),
+		players["VOR"].fillna(0.0),
+	)
+
+	# Vectorized scarcity: drop to average of next 3 within each position
+	players = players.sort_values(["position", "proj_pts"], ascending=[True, False]).reset_index(drop=True)
+	lead1 = players.groupby("position")["proj_pts"].shift(-1)
+	lead2 = players.groupby("position")["proj_pts"].shift(-2)
+	lead3 = players.groupby("position")["proj_pts"].shift(-3)
+	avg_next = pd.concat([lead1, lead2, lead3], axis=1).mean(axis=1, skipna=True)
+	players["scarcity"] = np.maximum(0.0, players["proj_pts"] - avg_next.fillna(players["proj_pts"]))
+
+	# Pre-score without delta to select candidate subset
+	pre_score = (w_vor * vor_component) + (w_scarcity * players["scarcity"]) + (0.0 * players["proj_pts"])  # keep structure for clarity
+	CANDIDATE_K = 120
+	cand_idx = np.argsort(-pre_score.values)[:min(CANDIDATE_K, len(players))]
+	cand_mask = np.zeros(len(players), dtype=bool)
+	cand_mask[cand_idx] = True
+
+	# Compute delta and would_start only for candidates
+	players["delta"] = 0.0
+	players["would_start"] = False
+	if w_delta > 0.0 and np.any(cand_mask):
+		cand_rows = players.loc[cand_mask]
+		def candidate_delta(row: pd.Series) -> float:
+			cand_df = pd.concat([my_team_df, row.to_frame().T], ignore_index=True)
+			new_total = compute_lineup_total(cand_df, roster)
+			return new_total - baseline_total
+		cand_delta = cand_rows.apply(candidate_delta, axis=1)
+		players.loc[cand_rows.index, "delta"] = cand_delta.values
+		players.loc[cand_rows.index, "would_start"] = cand_delta.values > 0.05
+
+	# Vectorized weights
+	pos = players["position"].astype(str)
+	qb_w = 0.8 if progress < 0.4 else (0.9 if progress < 0.7 else 1.0)
+	dst_w = 0.3 if progress < 0.75 else (0.8 if progress < 0.9 else 1.0)
+	k_w = 0.2 if progress < 0.85 else (0.6 if progress < 0.95 else 1.0)
+	pos_w = np.where(pos == "QB", qb_w, 1.0)
+	pos_w = np.where(pos == "DST", dst_w, pos_w)
+	pos_w = np.where(pos == "K", k_w, pos_w)
+	pos_w = pos_w * np.where(players["would_start"], 1.05, 1.0)
+	players["pos_w"] = pos_w
+
+	bench_w = np.where(
+		players["would_start"],
+		1.0,
+		np.where(
+			pos.isin(["RB", "WR", "TE"]),
+			1.0 + bench_depth_boost,
+			np.where(pos == "QB", 0.85, np.where(pos == "DST", 0.7, np.where(pos == "K", 0.6, 0.9)))
+		),
+	)
+	players["bench_w"] = bench_w
+
 	players["score_base"] = w_delta * players["delta"] + w_vor * vor_component + w_scarcity * players["scarcity"]
 	players["score"] = players["score_base"] * players["pos_w"] * players["bench_w"]
-	return players.sort_values(["score","score_base","delta","VOR","proj_pts"], ascending=False)
+	return players.sort_values(["score", "score_base", "delta", "VOR", "proj_pts"], ascending=False)
 
 
 def init_state():
