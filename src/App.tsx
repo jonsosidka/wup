@@ -12,7 +12,7 @@ function App() {
   const [search, setSearch] = useState<string>("");
   const [showPos, setShowPos] = useState<string[]>(["ALL"]);
   const [taken, setTaken] = useState<Record<string, "mine" | "gone">>({});
-  const [myRoster, setMyRoster] = useState<Record<string, number>>({ ...DEFAULT_ROSTER.slots, BENCH: 0 });
+  const [myRoster, setMyRoster] = useState<Record<string, number>>({ QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0, DST: 0, K: 0, BENCH: 0 });
   const [myRosterNames, setMyRosterNames] = useState<Record<string, string[]>>({ QB: [], RB: [], WR: [], TE: [], FLEX: [], DST: [], K: [], BENCH: [] });
   const [weights, setWeights] = useState<RecommendationsWeights>({ w_delta: 0.6, w_vor: 0.3, w_scarcity: 0.1, bench_depth_boost: 0.15 });
 
@@ -45,20 +45,22 @@ function App() {
     const row = allPlayers.find((p) => p.player === playerName);
     if (!row) return;
     const pos = row.position;
-    setMyRoster((prev) => ({ ...prev }));
+    const canStartPos = (myRoster[pos] ?? 0) < (roster.slots[pos] ?? 0);
+    const canFlex = ["RB", "WR", "TE"].includes(pos) && (myRoster.FLEX ?? 0) < (roster.slots.FLEX ?? 0);
+
+    setMyRoster((prev) => {
+      const next = { ...prev };
+      if (canStartPos) next[pos] = (next[pos] ?? 0) + 1;
+      else if (canFlex) next.FLEX = (next.FLEX ?? 0) + 1;
+      else next.BENCH = (next.BENCH ?? 0) + 1;
+      return next;
+    });
+
     setMyRosterNames((prev) => {
       const next = { ...prev, QB: [...prev.QB], RB: [...prev.RB], WR: [...prev.WR], TE: [...prev.TE], FLEX: [...prev.FLEX], DST: [...prev.DST], K: [...prev.K], BENCH: [...prev.BENCH] };
-      const canStartPos = (myRoster[pos] ?? 0) < (roster.slots[pos] ?? 0);
-      if (canStartPos) {
-        myRoster[pos] = (myRoster[pos] ?? 0) + 1;
-        next[pos].push(playerName);
-      } else if (["RB", "WR", "TE"].includes(pos) && (myRoster.FLEX ?? 0) < (roster.slots.FLEX ?? 0)) {
-        myRoster.FLEX = (myRoster.FLEX ?? 0) + 1;
-        next.FLEX.push(playerName);
-      } else {
-        myRoster.BENCH = (myRoster.BENCH ?? 0) + 1;
-        next.BENCH.push(playerName);
-      }
+      if (canStartPos) next[pos].push(playerName);
+      else if (canFlex) next.FLEX.push(playerName);
+      else next.BENCH.push(playerName);
       return next;
     });
   }
@@ -75,26 +77,30 @@ function App() {
       const row = allPlayers.find((p) => p.player === last);
       if (!row) return;
       const pos = row.position;
+      const wasInPos = (myRosterNames[pos] ?? []).includes(last);
+      const wasInFlex = (myRosterNames.FLEX ?? []).includes(last);
+      const wasInBench = (myRosterNames.BENCH ?? []).includes(last);
+
       setMyRosterNames((prev) => {
         const nextNames = { ...prev, QB: [...prev.QB], RB: [...prev.RB], WR: [...prev.WR], TE: [...prev.TE], FLEX: [...prev.FLEX], DST: [...prev.DST], K: [...prev.K], BENCH: [...prev.BENCH] };
         const removeFrom = (list: string[]) => {
           const idx = list.indexOf(last);
           if (idx >= 0) list.splice(idx, 1);
-          return idx >= 0;
         };
-        let removed = removeFrom(nextNames[pos]);
-        if (removed) {
-          myRoster[pos] = Math.max(0, (myRoster[pos] ?? 1) - 1);
-        } else if (removeFrom(nextNames.FLEX)) {
-          myRoster.FLEX = Math.max(0, (myRoster.FLEX ?? 1) - 1);
-          removed = true;
-        } else if (removeFrom(nextNames.BENCH)) {
-          myRoster.BENCH = Math.max(0, (myRoster.BENCH ?? 1) - 1);
-          removed = true;
-        } else {
-          myRoster[pos] = Math.max(0, (myRoster[pos] ?? 1) - 1);
-        }
+        if (wasInPos) removeFrom(nextNames[pos]);
+        else if (wasInFlex) removeFrom(nextNames.FLEX);
+        else if (wasInBench) removeFrom(nextNames.BENCH);
+        else removeFrom(nextNames[pos]);
         return nextNames;
+      });
+
+      setMyRoster((prev) => {
+        const nextCounts = { ...prev };
+        if (wasInPos) nextCounts[pos] = Math.max(0, (nextCounts[pos] ?? 0) - 1);
+        else if (wasInFlex) nextCounts.FLEX = Math.max(0, (nextCounts.FLEX ?? 0) - 1);
+        else if (wasInBench) nextCounts.BENCH = Math.max(0, (nextCounts.BENCH ?? 0) - 1);
+        else nextCounts[pos] = Math.max(0, (nextCounts[pos] ?? 0) - 1);
+        return nextCounts;
       });
     }
   }
