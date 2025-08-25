@@ -106,19 +106,19 @@ export function recommend(
 	const totalPicks = leagueSize * (Object.values(roster.slots).reduce((a, b) => a + b, 0) + roster.bench);
 	const progress = Math.min(1, Math.max(0, totalPicks ? takenCount / totalPicks : 0));
 	const posWeight = (pos: string, wouldStart: boolean): number => {
-		// More aggressively de-prioritize early QBs
-		if (pos === "QB") return progress < 0.4 ? 0.6 : progress < 0.7 ? 0.8 : 1.0;
-		if (pos === "DST") return progress < 0.75 ? 0.3 : progress < 0.9 ? 0.8 : 1.0;
-		if (pos === "K") return progress < 0.85 ? 0.2 : progress < 0.95 ? 0.6 : 1.0;
+		// Stronger early de-prioritization for onesie positions
+		if (pos === "QB") return progress < 0.5 ? 0.5 : progress < 0.75 ? 0.75 : 1.0;
+		if (pos === "DST") return progress < 0.9 ? 0.2 : progress < 0.98 ? 0.6 : 1.0;
+		if (pos === "K") return progress < 0.95 ? 0.15 : progress < 0.99 ? 0.5 : 1.0;
 		return wouldStart ? 1.08 : 1.0;
 	};
 	const benchMultiplier = (pos: string, wouldStart: boolean): number => {
 		if (wouldStart) return 1.0;
 		if (["RB", "WR", "TE"].includes(pos)) return 1.0 + (weights.bench_depth_boost ?? 0);
-		// Reduce bench value for backup QBs further
-		if (pos === "QB") return 0.75;
-		if (pos === "DST") return 0.7;
-		if (pos === "K") return 0.6;
+		// Stronger penalty for non-starting onesie positions early
+		if (pos === "QB") return progress < 0.7 ? 0.5 : 0.7;
+		if (pos === "DST") return progress < 0.9 ? 0.3 : 0.6;
+		if (pos === "K") return progress < 0.95 ? 0.2 : 0.5;
 		return 0.9;
 	};
 	// Precompute position sorted lists for scarcity

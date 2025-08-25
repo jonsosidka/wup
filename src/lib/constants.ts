@@ -25,13 +25,13 @@ export const POSITION_FILES: Record<Position, string> = {
 };
 
 export const BENCH_SHARE: Record<string, number> = {
-	// Increase QB replacement baseline to devalue early QBs
-	QB: 1.0,
+	// Move replacement baselines up for QB/DST/K (negative shares reduce replacement rank)
+	QB: -0.3,
 	RB: 1.5,
 	WR: 1.5,
 	TE: 0.4,
-	DST: 0.2,
-	K: 0.2,
+	DST: -0.2,
+	K: -0.3,
 };
 
 export const DEFAULT_ROSTER: RosterConfig = {
