@@ -1,24 +1,23 @@
-## WUP Draft Assist
+## WUP Draft Assist (Web)
 
-A Streamlit app to assist a 14-team fantasy draft using your CSV projections. It tracks picks (yours and others), and recommends optimal picks factoring positional scarcity (VOR) and your current roster needs for the weekly lineup: QB, RB, RB, WR, WR, TE, FLEX (RB/WR/TE), DEF, K, plus 7 bench spots.
+Lightweight browser app that mirrors the original Streamlit app. CSVs load from `public/data` at runtime and all scoring is done client-side for instant feedback after clicking ✓ or x.
 
-### Setup
+### Local development
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+1. Install deps
+   - `npm install`
+2. Start dev server
+   - `npm run dev`
 
-### Run
+### Build
 
-```bash
-streamlit run app.py
-```
+`npm run build` → outputs static files to `dist/`.
 
-### Data
-Place CSVs under `data/`: `QB.csv`, `RB.csv`, `WR.csv`, `TE.csv`, `K.csv`, `DST.csv`.
+### Deploy to Vercel
 
-### Notes
-- Recommendations blend Value Over Replacement (by position and flex pool) with your roster fill status.
-- You can mark players as Taken (x) or My Pick (check), with undo.
+- Framework preset: Vite
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Install Command: `npm install`
+
+The CSVs in `public/data` are bundled as static assets and fetched as `/data/*.csv`.
