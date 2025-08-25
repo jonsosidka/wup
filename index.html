@@ -11,7 +11,7 @@
   </head>
   <body>
     <div id="root">Loading app…</div>
-    <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable/dist/stlite.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stlite/browser@latest/build/stlite.js"></script>
     <script>
       (async () => {
         const filePaths = [
@@ -36,9 +36,9 @@
 
         stlite.mount(
           {
-            mainScript: files["app.py"],
-            files,
             requirements: ["pandas", "numpy"],
+            files,
+            entrypoint: "app.py",
           },
           document.getElementById("root")
         );
