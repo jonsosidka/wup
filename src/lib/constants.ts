@@ -25,7 +25,8 @@ export const POSITION_FILES: Record<Position, string> = {
 };
 
 export const BENCH_SHARE: Record<string, number> = {
-	QB: 0.3,
+	// Increase QB replacement baseline to devalue early QBs
+	QB: 1.0,
 	RB: 1.5,
 	WR: 1.5,
 	TE: 0.4,
