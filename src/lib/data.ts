@@ -55,7 +55,37 @@ export async function loadAllPlayers(): Promise<Player[]> {
 		const cur = map.get(k);
 		if (!cur || p.proj_pts > cur.proj_pts) map.set(k, p);
 	}
-	return Array.from(map.values());
+	const deduped = Array.from(map.values());
+	// Attempt to load ages from AGES.csv or ages.csv
+	try {
+		const agesText = await fetchCsv(`${DATA_DIR}/AGES.csv`).catch(() => fetchCsv(`${DATA_DIR}/ages.csv`));
+		const parsed = Papa.parse(agesText, { header: true, dynamicTyping: true });
+		const rows = Array.isArray(parsed.data) ? (parsed.data as any[]) : [];
+		const norm = (s: any) => String(s ?? "").trim();
+		const toAge = (v: any) => {
+			const n = Number(v);
+			return Number.isFinite(n) ? n : undefined;
+		};
+		// Build name->age map with flexible headers
+		const nameKeys = ["player", "PLAYER", "PLAYER NAME", "PLAYER NAME", "name", "Name", "PLAYER NAME"]; // include variants
+		const ageKeys = ["age", "AGE"];
+		const nameHeader = Object.keys(rows[0] ?? {}).find((k) => nameKeys.includes(String(k))) ?? "player";
+		const ageHeader = Object.keys(rows[0] ?? {}).find((k) => ageKeys.includes(String(k))) ?? "age";
+		const ageMap = new Map<string, number>();
+		for (const r of rows) {
+			const nm = norm(r[nameHeader]);
+			const age = toAge(r[ageHeader]);
+			if (!nm || age === undefined) continue;
+			ageMap.set(nm, age);
+		}
+		for (const p of deduped) {
+			const age = ageMap.get(p.player) ?? ageMap.get(p.player.replace(/\s+Sr\.|\s+Jr\.|\s+III|\s+II/g, "").trim());
+			if (age !== undefined) (p as any).age = age;
+		}
+	} catch (e) {
+		// ignore ages if not present
+	}
+	return deduped;
 }
 
 

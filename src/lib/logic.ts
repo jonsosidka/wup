@@ -147,7 +147,23 @@ export function recommend(
 		const vorComponent = ["RB", "WR", "TE"].includes(p.position) ? (p.VOR_FLEX ?? p.VOR ?? 0) : (p.VOR ?? 0);
 		p.pos_w = posWeight(p.position, !!p.would_start);
 		p.bench_w = benchMultiplier(p.position, !!p.would_start);
-		p.score_base = (weights.w_delta ?? 0.6) * (p.delta ?? 0) + (weights.w_vor ?? 0.3) * vorComponent + (weights.w_scarcity ?? 0.1) * (p.scarcity ?? 0);
+		// Age preference (dynasty): scale 0..1 based on position
+		const age = (p as any).age as number | undefined;
+		let agePref = 0;
+		if (typeof age === "number" && Number.isFinite(age)) {
+			if (["RB","WR","TE"].includes(p.position)) {
+				agePref = Math.max(0, Math.min(1, (30 - age) / 10)); // 1 at 20, 0 at 30+
+			} else if (p.position === "QB") {
+				agePref = Math.max(0, Math.min(1, (38 - age) / 16)); // 1 at 22, 0 at 38+
+			} else {
+				agePref = 0;
+			}
+		}
+		p.age_pref = agePref;
+		p.score_base = (weights.w_delta ?? 0.6) * (p.delta ?? 0)
+			+ (weights.w_vor ?? 0.3) * vorComponent
+			+ (weights.w_scarcity ?? 0.1) * (p.scarcity ?? 0)
+			+ (weights.w_age ?? 0) * agePref;
 		p.score = (p.score_base ?? 0) * (p.pos_w ?? 1) * (p.bench_w ?? 1);
 	}
 	return list.sort((a, b) =>

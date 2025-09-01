@@ -14,7 +14,7 @@ function App() {
   const [taken, setTaken] = useState<Record<string, "mine" | "gone">>({});
   const [myRoster, setMyRoster] = useState<Record<string, number>>({ QB: 0, RB: 0, WR: 0, TE: 0, FLEX: 0, DST: 0, K: 0, BENCH: 0 });
   const [myRosterNames, setMyRosterNames] = useState<Record<string, string[]>>({ QB: [], RB: [], WR: [], TE: [], FLEX: [], DST: [], K: [], BENCH: [] });
-  const [weights, setWeights] = useState<RecommendationsWeights>({ w_delta: 0.6, w_vor: 0.3, w_scarcity: 0.1, bench_depth_boost: 0.15 });
+  const [weights, setWeights] = useState<RecommendationsWeights>({ w_delta: 0.6, w_vor: 0.3, w_scarcity: 0.1, bench_depth_boost: 0.15, w_age: 0 });
 
   useEffect(() => {
     loadAllPlayers().then(setAllPlayers).catch((e) => console.error(e));
@@ -191,6 +191,10 @@ function App() {
             Bench depth boost {weights.bench_depth_boost.toFixed(2)}
             <input type="range" min={0} max={0.5} step={0.01} value={weights.bench_depth_boost} onChange={(e) => setWeights({ ...weights, bench_depth_boost: Number(e.target.value) })} />
           </label>
+          <label>
+            Age weight (Dynasty) {(weights.w_age ?? 0).toFixed(2)}
+            <input type="range" min={0} max={1} step={0.05} value={weights.w_age ?? 0} onChange={(e) => setWeights({ ...weights, w_age: Number(e.target.value) })} />
+          </label>
           <button onClick={undoLastPick}>Undo last pick</button>
 
           <hr />
@@ -223,7 +227,7 @@ function App() {
               </div>
             ))}
           </div>
-          <p className="caption">Score = ΔTeam*wΔ + VOR*wV + Scarcity*wS, then weighted by draft-phase and bench depth. Tune sliders in the sidebar.</p>
+          <p className="caption">Score = ΔTeam*wΔ + VOR*wV + Scarcity*wS + Age*wA, then weighted by draft-phase and bench depth. Age is used only when available.</p>
         </main>
       </div>
     </div>

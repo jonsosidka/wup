@@ -4,6 +4,7 @@ export interface Player {
 	player: string;
 	team?: string;
 	position: Position;
+	age?: number;
 	proj_pts: number;
 	pos_rank: number;
 	overall_rank: number;
@@ -18,6 +19,7 @@ export interface PlayerWithCalcs extends Player {
 	scarcity?: number;
 	pos_w?: number;
 	bench_w?: number;
+	age_pref?: number;
 	score_base?: number;
 	score?: number;
 }
@@ -38,6 +40,7 @@ export interface RecommendationsWeights {
 	w_vor: number;
 	w_scarcity: number;
 	bench_depth_boost: number;
+	w_age?: number;
 }
 
 
